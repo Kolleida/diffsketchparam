@@ -6,6 +6,9 @@ import numpy as np
 class CountMinSketch:
     # TODO: Maybe make this use lazy frames instead, so we can parallelize updates across files?
 
+    KEY_COL = "keys"
+    VALUE_COL = "values"
+
     def __init__(self, d: int, w: int) -> None:
         self.d = d # Number of rows (hash functions).
         self.w = w # Number of columns.
@@ -14,18 +17,19 @@ class CountMinSketch:
         rnd = os.urandom
         self.index_seeds = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
 
-    def insert(self, keys: pl.Series, updates: pl.Series | None = None):
-        if updates is None:
-            updates = pl.Series("values", [1] * len(keys))
-        
-        row_indices = np.arange(self.d)
-        for d in row_indices:
-            col_indices = self._hash_col(keys, d=int(d))
-            df = pl.DataFrame(dict(indices=col_indices, updates=updates))
+    def insert(self, data: pl.DataFrame, key_col: str = "packets", value_col: str | None = None):
+        df = data.select(
+            pl.col(key_col).alias(self.KEY_COL), 
+            (pl.col(value_col) if value_col is not None else pl.lit(1)).alias(self.VALUE_COL)
+        )
+        hashed_indices = self._hash_keys(df)
+        for d in range(self.d):
+            idx_col = f'{self.KEY_COL}_{d}'
+            col_df = pl.DataFrame([hashed_indices.get_column(idx_col), df.get_column(self.VALUE_COL)])
 
-            agg_updates = df.group_by(pl.col("indices")).sum()
-            indices = agg_updates["indices"].to_numpy()
-            increments = agg_updates["updates"].to_numpy()
+            agg_updates = col_df.group_by(pl.col(idx_col)).sum()
+            indices = agg_updates.get_column(idx_col).to_numpy()
+            increments = agg_updates.get_column(self.VALUE_COL).to_numpy()
             self.table[d, indices] += increments
         
     def _hash_col(self, keys: pl.Series, d=0) -> np.ndarray:
@@ -35,12 +39,31 @@ class CountMinSketch:
         indices = (hashed_vals % self.w).to_numpy()
         return indices
     
-    def query(self, keys):
+    def _hash_keys(self, data: pl.DataFrame | pl.Series) -> pl.DataFrame:
+        """
+        Takes a DataFrame/Series of keys and creates additional columns with indices for each
+        hash function, named like KEY_0, KEY_1, KEY_2, etc.
+        """
+        if isinstance(data, pl.Series):
+            data = data.to_frame()
+        hashed_cols = [
+            pl.col(self.KEY_COL).
+            hash(seed=self.index_seeds[d]).
+            mod(self.w).
+            alias(f"{self.KEY_COL}_{d}") 
+            for d in range(self.d)
+        ]
+        result = data.select(*hashed_cols)
+        return result
+
+    def query(self, keys: pl.Series | pl.DataFrame, key_col: str = "packets"):
+        keys = keys.alias(self.KEY_COL).to_frame() if isinstance(keys, pl.Series) else keys.select(pl.col(key_col).alias(self.KEY_COL))
         all_values = []
-        row_indices = np.arange(self.d)
-        for d in row_indices:
-            col_indices = self._hash_col(keys, d=int(d))
-            entries = self.table[d, col_indices]
+        hashed_indices = self._hash_keys(keys)
+        for d in range(self.d):
+            idx_col = f'{self.KEY_COL}_{d}'
+            indices = hashed_indices.get_column(idx_col).to_numpy()
+            entries = self.table[d, indices]
             all_values.append(entries)
         freqs_matrix = np.stack(all_values)
         freqs = np.min(freqs_matrix, axis=0)
