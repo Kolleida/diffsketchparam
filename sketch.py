@@ -1,0 +1,110 @@
+import os
+import polars as pl
+import numpy as np
+
+
+class CountMinSketch:
+    # TODO: Maybe make this use lazy frames instead, so we can parallelize updates across files?
+
+    def __init__(self, d: int, w: int) -> None:
+        self.d = d # Number of rows (hash functions).
+        self.w = w # Number of columns.
+        self.table = np.zeros((d, w))
+
+        rnd = os.urandom
+        self.index_seeds = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
+
+    def insert(self, keys: pl.Series, updates: pl.Series | None = None):
+        if updates is None:
+            updates = pl.Series("values", [1] * len(keys))
+        
+        row_indices = np.arange(self.d)
+        for d in row_indices:
+            col_indices = self._hash_col(keys, d=int(d))
+            df = pl.DataFrame(dict(indices=col_indices, updates=updates))
+
+            agg_updates = df.group_by(pl.col("indices")).sum()
+            indices = agg_updates["indices"].to_numpy()
+            increments = agg_updates["updates"].to_numpy()
+            self.table[d, indices] += increments
+        
+    def _hash_col(self, keys: pl.Series, d=0) -> np.ndarray:
+        if not (0 <= d < self.d):
+            raise ValueError("Row index out of range.")
+        hashed_vals = keys.hash(seed=self.index_seeds[d])
+        indices = (hashed_vals % self.w).to_numpy()
+        return indices
+    
+    def query(self, keys):
+        all_values = []
+        row_indices = np.arange(self.d)
+        for d in row_indices:
+            col_indices = self._hash_col(keys, d=int(d))
+            entries = self.table[d, col_indices]
+            all_values.append(entries)
+        freqs_matrix = np.stack(all_values)
+        freqs = np.min(freqs_matrix, axis=0)
+        return freqs
+
+    def __add__(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError(f"Tried to add object of type {type(other)} to {self.__class__.__name__}")
+        if self.table.shape != other.table.shape:
+            raise ValueError("Dimensions of underlying table do not match.")
+        result = self.__class__(d=self.d, w=self.w)
+        result.table += self.table + other.table
+        return result
+    
+
+class CountSketch:
+
+    def __init__(self, d: int, w: int) -> None:
+        self.d = d # Number of rows (hash functions).
+        self.w = w # Number of columns.
+        self.table = np.zeros((d, w))
+
+        rnd = os.urandom
+        self.index_seeds = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
+        self.sign_seeds  = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
+
+    def insert(self, keys: pl.Series, updates: pl.Series | None = None):
+        if updates is None:
+            updates = pl.Series("values", [1] * len(keys))
+        
+        row_indices = np.arange(self.d)
+        for d in row_indices:
+            col_indices, signs = self._hash_indices(keys, d=int(d))
+            df = pl.DataFrame(dict(indices=col_indices, updates=updates * signs))
+            agg_updates = df.group_by(pl.col("indices")).sum()
+            indices = agg_updates["indices"].to_numpy()
+            increments = agg_updates["updates"].to_numpy()
+            self.table[d, indices] += increments
+        
+    def _hash_indices(self, keys: pl.Series, d=0) -> tuple[np.ndarray, np.ndarray]:
+        """Each key gets mapped to a bucket index, along with its corresponding sign."""
+        if not (0 <= d < self.d):
+            raise ValueError("Row index out of range.")
+        indices = (keys.hash(seed=self.index_seeds[d]) % self.w).to_numpy()
+        signs = (keys.hash(seed=self.sign_seeds[d]) % 2).to_numpy().astype(int)
+        signs[signs == 0] = -1
+        return indices, signs
+    
+    def query(self, keys):
+        all_values = []
+        row_indices = np.arange(self.d)
+        for d in row_indices:
+            col_indices, signs = self._hash_indices(keys, d=int(d))
+            entries = self.table[d, col_indices] * signs
+            all_values.append(entries)
+        freqs_matrix = np.stack(all_values)
+        freqs = np.median(freqs_matrix, axis=0)
+        return freqs
+
+    def __add__(self, other):
+        if not isinstance(other, self.__class__):
+            raise TypeError(f"Tried to add object of type {type(other)} to {self.__class__.__name__}")
+        if self.table.shape != other.table.shape:
+            raise ValueError("Dimensions of underlying table do not match.")
+        result = self.__class__(d=self.d, w=self.w)
+        result.table += self.table + other.table
+        return result
