@@ -17,7 +17,7 @@ class CountMinSketch:
         rnd = os.urandom
         self.index_seeds = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
 
-    def insert(self, data: pl.DataFrame, key_col: str = "packets", value_col: str | None = None):
+    def insert(self, data: pl.DataFrame, key_col: str = "flows", value_col: str | None = None):
         df = data.select(
             pl.col(key_col).alias(self.KEY_COL), 
             (pl.col(value_col) if value_col is not None else pl.lit(1)).alias(self.VALUE_COL)
