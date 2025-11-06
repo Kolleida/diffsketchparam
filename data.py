@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import polars as pl
+import polars_hash as plh
 import numpy as np
 from itertools import product
 import math
@@ -26,7 +27,8 @@ class CaidaData(Dataset):
         ).collect()
         self.sketches = self.initialize_sketches()
         self.true_counts = self.df.group_by(self.KEY_COL).sum()
-        self.create_dataset()
+        self.stream_length = self.true_counts.select(self.VALUE_COL).sum().item()
+        self.data = self.create_dataset()
 
     def initialize_sketches(self) -> list[CountMinSketch]:
         sketches = []
@@ -47,18 +49,37 @@ class CaidaData(Dataset):
             sketches.append(cm)
         return sketches
 
-    def create_dataset(self):
+    def create_dataset(self, dtype=torch.float32):
         keys = self.true_counts.select(self.KEY_COL)
-        per_sketch = []
+        # Hash flow keys to torch.int64 indices (treat as dictionary). Need to treat these separately since HashEmbeddings require LongTensors.
+        key_idx = keys.select(
+            plh.col(self.KEY_COL).nchash.
+            wyhash().
+            mod(pl.Int64.max())
+        ).to_torch(dtype=pl.Int64).flatten()
+        float_data = []
+        ground_truth_data = []
         for cm in self.sketches:
-            approx_freqs = cm.query(keys, key_col=self.KEY_COL)
-            true_freqs = self.true_counts.get_column(self.VALUE_COL).to_numpy()
+            # Normalize frequencies by stream length.
+            approx_freqs = cm.query(keys, key_col=self.KEY_COL) / self.stream_length
+            true_freqs = self.true_counts.get_column(self.VALUE_COL).to_numpy() / self.stream_length
             diffs = np.abs(approx_freqs - true_freqs)
-            # Each data point should be: [flow key embedding], approx freq, abs error, true d, true w.
-            # TODO: How to embed flow key. Maybe use hash embeddings (HashingVectorizer)? Or use bits of hash value? Also, normalize abs error and freq based on stream length?
-            entry = np.stack([approx_freqs, diffs, np.full(len(keys), cm.d), np.full(len(keys), cm.w)], axis=1)
-            per_sketch.append(entry)
-        return per_sketch
 
-    def __getitem__(self, index) -> torch.Tensor:
-        return super().__getitem__(index)
+            freq_info = torch.from_numpy(np.stack([approx_freqs, diffs], axis=1))
+            ground_truth = torch.tensor([cm.d, cm.w], dtype=dtype).repeat(len(keys))
+
+            float_data.append(freq_info)
+            ground_truth_data.append(ground_truth)
+
+        flattened_key_indices = key_idx.repeat(len(self.sketches))
+        flattened_float_data = torch.concat(float_data)
+        flattened_gt_data = torch.concat(ground_truth_data)
+
+        return flattened_key_indices, flattened_float_data, flattened_gt_data
+
+    def __getitem__(self, index):
+        key_indices, numeric_data, gt = self.data
+        return key_indices[index], numeric_data[index], gt[index]
+    
+    def __len__(self):
+        return len(self.data[0])

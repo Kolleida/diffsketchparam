@@ -1,5 +1,6 @@
 import os
 import polars as pl
+import polars_hash as plh
 import numpy as np
 
 
@@ -35,7 +36,7 @@ class CountMinSketch:
     def _hash_col(self, keys: pl.Series, d=0) -> np.ndarray:
         if not (0 <= d < self.d):
             raise ValueError("Row index out of range.")
-        hashed_vals = keys.hash(seed=self.index_seeds[d])
+        hashed_vals = keys.hash(seed=d)
         indices = (hashed_vals % self.w).to_numpy()
         return indices
     
@@ -48,7 +49,7 @@ class CountMinSketch:
             data = data.to_frame()
         hashed_cols = [
             pl.col(self.KEY_COL).
-            hash(seed=self.index_seeds[d]).
+            hash(seed=d).
             mod(self.w).
             alias(f"{self.KEY_COL}_{d}") 
             for d in range(self.d)
@@ -56,7 +57,7 @@ class CountMinSketch:
         result = data.select(*hashed_cols)
         return result
 
-    def query(self, keys: pl.Series | pl.DataFrame, key_col: str = "packets"):
+    def query(self, keys: pl.Series | pl.DataFrame, key_col: str = "packets") -> np.ndarray:
         keys = keys.alias(self.KEY_COL).to_frame() if isinstance(keys, pl.Series) else keys.select(pl.col(key_col).alias(self.KEY_COL))
         all_values = []
         hashed_indices = self._hash_keys(keys)
@@ -86,10 +87,6 @@ class CountSketch:
         self.w = w # Number of columns.
         self.table = np.zeros((d, w))
 
-        rnd = os.urandom
-        self.index_seeds = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
-        self.sign_seeds  = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
-
     def insert(self, keys: pl.Series, updates: pl.Series | None = None):
         if updates is None:
             updates = pl.Series("values", [1] * len(keys))
@@ -107,8 +104,8 @@ class CountSketch:
         """Each key gets mapped to a bucket index, along with its corresponding sign."""
         if not (0 <= d < self.d):
             raise ValueError("Row index out of range.")
-        indices = (keys.hash(seed=self.index_seeds[d]) % self.w).to_numpy()
-        signs = (keys.hash(seed=self.sign_seeds[d]) % 2).to_numpy().astype(int)
+        indices = (keys.hash(seed=d) % self.w).to_numpy()
+        signs = (keys.hash(seed=d, seed_1=d) % 2).to_numpy().astype(int)
         signs[signs == 0] = -1
         return indices, signs
     
