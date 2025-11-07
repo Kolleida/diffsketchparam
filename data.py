@@ -18,7 +18,7 @@ class CaidaData(Dataset):
     KEY_COL = 'flow'
     VALUE_COL = 'packets'
 
-    def __init__(self, paths: str | list[str], key_col: str = 'flow', value_col: str = 'packets') -> None:
+    def __init__(self, paths: str | list[str], key_col: str = 'flow', value_col: str = 'packets', dtype = torch.float32) -> None:
         super().__init__()
         self.paths = paths
         self.df = pl.scan_csv(paths).select(
@@ -65,13 +65,15 @@ class CaidaData(Dataset):
             true_freqs = self.true_counts.get_column(self.VALUE_COL).to_numpy() / self.stream_length
             diffs = np.abs(approx_freqs - true_freqs)
 
-            freq_info = torch.from_numpy(np.stack([approx_freqs, diffs], axis=1))
-            ground_truth = torch.tensor([cm.d, cm.w], dtype=dtype).repeat(len(keys))
+            freq_info = torch.from_numpy(np.stack([approx_freqs, diffs], axis=1)).to(dtype=dtype)
+            d_vals = torch.full((len(keys),), cm.d)
+            w_vals = torch.full((len(keys),), cm.w)
+            ground_truth = torch.stack([d_vals, w_vals], dim=-1).to(dtype=dtype)
 
             float_data.append(freq_info)
             ground_truth_data.append(ground_truth)
 
-        flattened_key_indices = key_idx.repeat(len(self.sketches))
+        flattened_key_indices = key_idx.repeat(len(self.sketches)).unsqueeze(dim=-1)
         flattened_float_data = torch.concat(float_data)
         flattened_gt_data = torch.concat(ground_truth_data)
 
