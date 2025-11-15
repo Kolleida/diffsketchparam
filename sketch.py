@@ -15,9 +15,6 @@ class CountMinSketch:
         self.w = w # Number of columns.
         self.table = np.zeros((d, w))
 
-        rnd = os.urandom
-        self.index_seeds = [int.from_bytes(rnd(4), "little") for _ in range(self.d)]
-
     def insert(self, data: pl.DataFrame, key_col: str = "flows", value_col: str | None = None):
         df = data.select(
             pl.col(key_col).alias(self.KEY_COL), 

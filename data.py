@@ -9,7 +9,7 @@ import math
 from sketch import CountMinSketch, CountSketch
 
 
-eps_int = (1e-6, 1e-2)
+eps_int = (1e-5, 1e-2)
 delta_int = (1e-3, 1e-2)
 
 
@@ -18,7 +18,13 @@ class CaidaData(Dataset):
     KEY_COL = 'flow'
     VALUE_COL = 'packets'
 
-    def __init__(self, paths: str | list[str], key_col: str = 'flow', value_col: str = 'packets', dtype = torch.float32) -> None:
+    def __init__(
+        self, 
+        paths: str | list[str], 
+        key_col: str = 'flow', 
+        value_col: str = 'packets', 
+        dtype = torch.float32
+    ) -> None:
         super().__init__()
         self.paths = paths
         self.df = pl.scan_csv(paths).select(
@@ -28,17 +34,19 @@ class CaidaData(Dataset):
         self.sketches = self.initialize_sketches()
         self.true_counts = self.df.group_by(self.KEY_COL).sum()
         self.stream_length = self.true_counts.select(self.VALUE_COL).sum().item()
-        self.data = self.create_dataset()
+        self.data = self.create_dataset(dtype=dtype)
 
     def initialize_sketches(self) -> list[CountMinSketch]:
         sketches = []
         rng = np.random.default_rng()
 
         # TODO: Is there a better way to range over possible configs?
-        errors = rng.uniform(eps_int[0], eps_int[1], size=5)
-        deltas = rng.uniform(delta_int[0], delta_int[1], size=5)
-        errors = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
-        deltas = [1e-4, 1e-3, 1e-2]
+        errors = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=5)
+        deltas = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=5)
+        errors = np.exp(errors)
+        deltas = np.exp(deltas)
+        # errors = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
+        # deltas = [1e-4, 1e-3, 1e-2]
 
         for eps, delta in product(errors, deltas):
             w = math.ceil(2 / eps)
@@ -82,6 +90,10 @@ class CaidaData(Dataset):
     def __getitem__(self, index):
         key_indices, numeric_data, gt = self.data
         return key_indices[index], numeric_data[index], gt[index]
+    
+    def __getitems__(self, indices):
+        key_indices, numeric_data, gt = self.data
+        return key_indices[indices], numeric_data[indices], gt[indices]
     
     def __len__(self):
         return len(self.data[0])

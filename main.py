@@ -1,5 +1,6 @@
 import argparse
 import time
+import os
 import glob
 import torch
 import torch.nn.functional as f
@@ -15,9 +16,10 @@ from sketch import CountMinSketch
 def parse_command_line_args():
     parser = argparse.ArgumentParser()
         
-    parser.add_argument("--input-path", type=str)
+    parser.add_argument("--input-path", type=str, required=True)
     parser.add_argument("--key-column", type=str, required=True)
     parser.add_argument("--value-column", type=str, required=True)
+    parser.add_argument("--model-save-path", type=str, default="sketch_model.pth")
     parser.add_argument("--batch-size", type=int, default=1024)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
@@ -33,17 +35,20 @@ def train(args: argparse.Namespace):
 
     paths = glob.glob(args.input_path)
     data = CaidaData(paths=paths, key_col=args.key_column, value_col=args.value_column)
-    dataloader = DataLoader(data, batch_size=args.batch_size, shuffle=True)
+    dataloader = DataLoader(data, batch_size=args.batch_size, shuffle=True, collate_fn=lambda x: x)
 
     hash_config = HashEmbeddingConfig()
     model = SketchParameterPredictor(
         input_dim=2, 
         hidden_dim=1024,
         output_dim=2,
-        num_layers=8,
+        num_hidden_layers=8,
         hash_embedding_config=hash_config
     ).to(device=device)
+
     optimizer = AdamW(model.parameters())
+
+    best_loss = float('inf')
     for epoch in range(args.epochs):
         print(f'Epoch: {epoch}')
         avg_loss = 0
@@ -60,10 +65,25 @@ def train(args: argparse.Namespace):
             avg_loss += (loss - avg_loss) / (i + 1)
 
             if i % 400 == 0:
-                print(f'Current Average Batch Loss: {avg_loss}')
-                print(output)
+                print(f'Average Batch Loss ({i + 1}/{len(dataloader)}): {avg_loss}')
+                if avg_loss < best_loss:
+                    best_loss = avg_loss.item()
+                    torch.save(model.state_dict(), args.model_save_path)
+                    print(f'Saved best model with loss {best_loss} to {args.model_save_path}')
 
             optimizer.step()
+
+        if avg_loss < best_loss:
+            best_loss = avg_loss.item() # type: ignore
+            torch.save(model.state_dict(), args.model_save_path)
+            print(f'Saved best model with loss {best_loss} to {args.model_save_path}')
+
+    # Save final model state.
+    filename = os.path.splitext(os.path.basename(args.model_save_path))[0]
+    filedir = os.path.dirname(args.model_save_path)
+    final_model_path = os.path.join(filedir, f'{filename}_final.pth')
+    torch.save(model.state_dict(), os.path.join(filedir, final_model_path))
+    print(f'Saved final model to {os.path.join(filedir, final_model_path)}')
 
 
 if __name__ == '__main__':
