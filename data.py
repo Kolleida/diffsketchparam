@@ -43,7 +43,7 @@ class CaidaData(Dataset):
 
         # TODO: Is there a better way to range over possible configs?
         errors = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=num_sketches)
-        deltas = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=num_sketches)
+        deltas = rng.uniform(np.log(delta_int[0]), np.log(delta_int[1]), size=num_sketches)
         errors = np.exp(errors)
         deltas = np.exp(deltas)
 
