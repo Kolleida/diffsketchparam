@@ -22,7 +22,8 @@ class CaidaData(Dataset):
         self, 
         paths: str | list[str], 
         key_col: str = 'flow', 
-        value_col: str = 'packets', 
+        value_col: str = 'packets',
+        num_sketches: int = 25, 
         dtype = torch.float32
     ) -> None:
         super().__init__()
@@ -31,24 +32,22 @@ class CaidaData(Dataset):
             pl.col(key_col).alias(self.KEY_COL), 
             pl.col(value_col).alias(self.VALUE_COL)
         ).collect()
-        self.sketches = self.initialize_sketches()
+        self.sketches = self.initialize_sketches(num_sketches=num_sketches)
         self.true_counts = self.df.group_by(self.KEY_COL).sum()
         self.stream_length = self.true_counts.select(self.VALUE_COL).sum().item()
         self.data = self.create_dataset(dtype=dtype)
 
-    def initialize_sketches(self) -> list[CountMinSketch]:
+    def initialize_sketches(self, num_sketches: int) -> list[CountMinSketch]:
         sketches = []
         rng = np.random.default_rng()
 
         # TODO: Is there a better way to range over possible configs?
-        errors = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=5)
-        deltas = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=5)
+        errors = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=num_sketches)
+        deltas = rng.uniform(np.log(eps_int[0]), np.log(eps_int[1]), size=num_sketches)
         errors = np.exp(errors)
         deltas = np.exp(deltas)
-        # errors = [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
-        # deltas = [1e-4, 1e-3, 1e-2]
 
-        for eps, delta in product(errors, deltas):
+        for eps, delta in zip(errors, deltas):
             w = math.ceil(2 / eps)
             d = math.ceil(math.log(1 / delta, 2))
             print(f"w = {w}, d = {d} with eps = {eps}, delta = {delta}")
