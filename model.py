@@ -5,35 +5,34 @@ from torch.nn import Linear, ReLU, RMSNorm
 from hash_embeddings import HashEmbedding
 from dataclasses import dataclass, field, asdict
 from collections import OrderedDict
+from hash_embeddings import HashEmbeddingParams
 
 
 @dataclass
-class HashEmbeddingConfig:
-    num_embeddings: int = field(default=10 ** 6)
-    embedding_dim: int = field(default=10 ** 2)
-    num_buckets: int = field(default=10 ** 4)
-    num_hashes: int = field(default=4)
+class FeedForwardPredictorParams:
+    input_dim: int = 2
+    hidden_dim: int = 1024
+    output_dim: int = 2
+    num_hidden_layers: int = 8
+    hash_embedding_params: HashEmbeddingParams = field(default_factory=HashEmbeddingParams)
 
 
-class SketchParameterPredictor(nn.Module):
+class FeedForwardPredictor(nn.Module):
 
     def __init__(
         self, 
-        input_dim: int, 
-        hidden_dim: int, 
-        output_dim: int, 
-        num_hidden_layers: int = 8, 
-        hash_embedding_config: HashEmbeddingConfig = HashEmbeddingConfig()
+        config: FeedForwardPredictorParams
     ) -> None:
         super().__init__()
-        self.embedding_layer = HashEmbedding(**asdict(hash_embedding_config), append_weight=False)
-        self.input_fc = nn.Linear(self.embedding_layer.embedding_dim + input_dim, hidden_dim)
+        self.config = config
+        self.embedding_layer = HashEmbedding(**asdict(config.hash_embedding_params), append_weight=False)
+        self.input_fc = nn.Linear(self.embedding_layer.embedding_dim + config.input_dim, config.hidden_dim)
         self.activation = nn.ReLU()
         layers = []
-        for _ in range(num_hidden_layers):
-            layers += [nn.Linear(hidden_dim, hidden_dim), self.activation]
+        for _ in range(config.num_hidden_layers):
+            layers += [nn.Linear(config.hidden_dim, config.hidden_dim), self.activation]
         self.fc_stack = nn.Sequential(*layers)
-        self.output_fc = nn.Linear(hidden_dim, output_dim)
+        self.output_fc = nn.Linear(config.hidden_dim, config.output_dim)
         self.output_activation = nn.Softplus()
 
     def forward(self, X, keys):
@@ -42,6 +41,20 @@ class SketchParameterPredictor(nn.Module):
         proj_input = self.activation(self.input_fc(input))
         output = self.output_activation(self.output_fc(self.fc_stack(proj_input)))
         return output
+    
+    def save(self, path: str) -> None:
+        model_info = {
+            "config": self.config,
+            "state_dict": self.state_dict()
+        }
+        torch.save(model_info, path)
+
+    @classmethod
+    def load(cls, path: str) -> FeedForwardPredictor:
+        model_info = torch.load(path, weights_only=False)
+        model = cls(model_info["config"])
+        model.load_state_dict(model_info["state_dict"])
+        return model
 
 
 

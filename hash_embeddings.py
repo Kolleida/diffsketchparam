@@ -5,6 +5,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.init import normal
+from dataclasses import dataclass, field
+
+
+@dataclass
+class HashEmbeddingParams:
+    num_embeddings: int = field(default=10 ** 6)
+    embedding_dim: int = field(default=10 ** 2)
+    num_buckets: int = field(default=10 ** 4)
+    num_hashes: int = field(default=4)
 
 
 class HashFamily():
