@@ -5,6 +5,7 @@ import yaml
 
 from hash_embeddings import HashEmbeddingParams
 from model import FeedForwardPredictorParams
+from cattrs import structure
 
 
 @dataclass
@@ -27,8 +28,8 @@ class Config:
     training_params: TrainingParams = field(default_factory=TrainingParams)
     model_config: ModelConfig = field(default_factory=ModelConfig)    
 
-    @staticmethod
-    def from_yaml(file_path: str) -> 'Config':
+    @classmethod
+    def from_yaml(cls, file_path: str) -> 'Config':
         with open(file_path, 'r') as f:
             data = yaml.safe_load(f)
-        return Config(**data)
+        return structure(data, cls)

@@ -3,7 +3,9 @@ from torch.utils.data import Dataset, DataLoader
 import polars as pl
 import polars_hash as plh
 import numpy as np
+import scipy as sp
 from itertools import product
+from loguru import logger
 import math
 
 from sketch import CountMinSketch, CountSketch
@@ -50,7 +52,7 @@ class CaidaData(Dataset):
         for eps, delta in zip(errors, deltas):
             w = math.ceil(2 / eps)
             d = math.ceil(math.log(1 / delta, 2))
-            print(f"w = {w}, d = {d} with eps = {eps}, delta = {delta}")
+            logger.debug(f"w = {w}, d = {d} with eps = {eps}, delta = {delta}")
             cm = CountMinSketch(d=d, w=w)
             cm.insert(self.df, key_col=self.KEY_COL, value_col=self.VALUE_COL)
             sketches.append(cm)
@@ -72,10 +74,13 @@ class CaidaData(Dataset):
             true_freqs = self.true_counts.get_column(self.VALUE_COL).to_numpy() / self.stream_length
             diffs = np.abs(approx_freqs - true_freqs)
 
+            entropy = sp.stats.entropy(cm.table.flatten() + 1e-8)
+
             freq_info = torch.from_numpy(np.stack([approx_freqs, diffs], axis=1)).to(dtype=dtype)
             d_vals = torch.full((len(keys),), cm.d)
             w_vals = torch.full((len(keys),), cm.w)
-            ground_truth = torch.stack([d_vals, w_vals], dim=-1).to(dtype=dtype)
+            entropy_vals = torch.full((len(keys),), entropy)
+            ground_truth = torch.stack([d_vals, w_vals, entropy_vals], dim=-1).to(dtype=dtype)
 
             float_data.append(freq_info)
             ground_truth_data.append(ground_truth)
