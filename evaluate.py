@@ -11,6 +11,7 @@ import time
 import sys
 import glob
 import argparse
+import json
 
 
 def parse_command_line_args():
@@ -22,6 +23,7 @@ def parse_command_line_args():
     parser.add_argument("--num-sketches-test", type=int, default=25)
     parser.add_argument("--value-column", type=str, required=True)
     parser.add_argument("--model-save-path", type=str, required=True)
+    parser.add_argument("--results-path", type=str, default='results.json')
     parser.add_argument("--eval-type", type=str, choices=['dataset', 'test_sketches'], default='test_sketches')
     parser.add_argument("--log-level", type=str, default='INFO')
     args = parser.parse_args()
@@ -78,6 +80,7 @@ def evaluate_model_sketches(args: argparse.Namespace):
 
     average_errors = np.zeros(len(epsilons))
     relative_errors_to_eps = np.zeros(len(epsilons))
+    cm_params = []
     num_undershoot = 0
     for eps_i, eps in enumerate(epsilons):
         logger.info(f'Evaluating for target epsilon: {eps:.4e} (sketch {eps_i + 1})')
@@ -101,9 +104,11 @@ def evaluate_model_sketches(args: argparse.Namespace):
                     logger.debug(f'Estimates after {i + 1}/{len(dataloader)} batches: {torch.stack(estimates).mean(dim=0)}')
                     
         final_estimate = torch.stack(estimates).mean(dim=0)
-        logger.info(f'Final estimate: {final_estimate}')
+        logger.info(f'Final estimate: d = {final_estimate[0]}, w = {final_estimate[1]}')
 
         # Evaluate on the sketch with the estimated parameters.
+        d, w = int(final_estimate[0]), int(final_estimate[1])
+        cm_params.append([d, w])
         cm = CountMinSketch(d=int(final_estimate[0]), w=int(final_estimate[1]))
         cm.insert(data.df, key_col=data.KEY_COL, value_col=data.VALUE_COL)
 
@@ -127,6 +132,21 @@ def evaluate_model_sketches(args: argparse.Namespace):
 
     logger.info(f'Final Average Error: {average_errors.mean():.4e}')
     logger.info(f'Final Relative Error: {relative_errors_to_eps.mean():.4f} (signed), {np.abs(relative_errors_to_eps).mean():.4f} (absolute)')
+
+    results = {
+        'num_input_sketches': args.num_sketches_dataset,
+        'sketch_params': cm_params,
+        'epsilons': epsilons.tolist(),
+        'average_errors': average_errors.tolist(),
+        'relative_errors': relative_errors_to_eps.tolist(),
+        'num_undershoot': num_undershoot
+    }
+    try:
+        with open(args.results_path, mode='w') as f:
+            json.dump(results, f, indent=2)
+        logger.info(f'Computed evaluation results saved to {args.results_path}')
+    except Exception as e:
+        logger.warning(f'Failed to save results: {e}')
 
 
 if __name__ == "__main__":
