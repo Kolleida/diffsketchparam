@@ -5,7 +5,7 @@ import glob
 import torch
 import torch.nn.functional as f
 from torch.utils.data import DataLoader
-from torch.optim import AdamW
+from torch.optim import AdamW, SGD
 from tqdm import tqdm
 from loguru import logger
 
@@ -26,7 +26,7 @@ def parse_command_line_args():
     parser.add_argument("--model-save-path", type=str, required=True)
     parser.add_argument("--config-file", type=str, default="config.yml", required=True)
     parser.add_argument("--log-level", type=str, default='INFO')
-    parser.add_argument("--use-entropy", action='store_true', type=bool, default=False)
+    parser.add_argument("--use-entropy", action='store_true', default=False)
     args = parser.parse_args()
     return args
 
@@ -59,8 +59,15 @@ def train(args: argparse.Namespace):
             torch.nn.Linear(64, 1)
         ).to(device=device)
 
-    optimizer = AdamW(model.parameters(), lr=5e-3)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_params.epochs * len(dataloader))
+    optimizer_params = train_params.optimizer_parms
+    if optimizer_params.optimizer_type == "AdamW":
+        optimizer = AdamW(model.parameters(), **optimizer_params.optimizer_options)
+    elif optimizer_params.optimizer_type == "SGD":
+        optimizer = SGD(model.parameters(), **optimizer_params.optimizer_options)
+    else:
+        raise ValueError(f"Unsupported optimizer type: {optimizer_params.optimizer_type}")
+    if optimizer_params.use_scheduler:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_params.epochs * len(dataloader))
 
     best_loss = float('inf')
     for epoch in range(train_params.epochs):
@@ -93,7 +100,8 @@ def train(args: argparse.Namespace):
                     logger.info(f'Saved best model with loss {best_loss} to {args.model_save_path}')
 
             optimizer.step()
-            scheduler.step()
+            if optimizer_params.use_scheduler:
+                scheduler.step()
 
         if avg_loss < best_loss:
             best_loss = avg_loss.item() # type: ignore

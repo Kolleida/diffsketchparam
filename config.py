@@ -9,12 +9,20 @@ from cattrs import structure
 
 
 @dataclass
+class OptimizerParams:
+    optimizer_type: Literal["AdamW", "SGD"] = "AdamW"
+    optimizer_options: dict = field(default_factory=lambda: {"lr": 5e-3})
+    use_scheduler: bool = True
+
+
+@dataclass
 class TrainingParams:
     batch_size: int = 1024
     epochs: int = 5
     logging_frequency: int = 400
     shuffle: bool = True
     device: str = "cuda"
+    optimizer_parms: OptimizerParams = field(default_factory=OptimizerParams)
 
 
 @dataclass
