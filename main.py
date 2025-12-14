@@ -26,6 +26,7 @@ def parse_command_line_args():
     parser.add_argument("--model-save-path", type=str, required=True)
     parser.add_argument("--config-file", type=str, default="config.yml", required=True)
     parser.add_argument("--log-level", type=str, default='INFO')
+    parser.add_argument("--use-entropy", action='store_true', type=bool, default=False)
     args = parser.parse_args()
     return args
 
@@ -49,7 +50,17 @@ def train(args: argparse.Namespace):
 
     model = FeedForwardPredictor(model_config.params).to(device=device)
 
-    optimizer = AdamW(model.parameters())
+    if args.use_entropy:
+        entropy_predictor = torch.nn.Sequential(
+            torch.nn.Linear(2, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 1)
+        ).to(device=device)
+
+    optimizer = AdamW(model.parameters(), lr=5e-3)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=train_params.epochs * len(dataloader))
 
     best_loss = float('inf')
     for epoch in range(train_params.epochs):
@@ -62,10 +73,17 @@ def train(args: argparse.Namespace):
             X = X.to(device=device).type(torch.float32)
             y = y.to(device=device)
             output = model(X=X, keys=keys)
-            loss = (((output - y) / (y + 1e-8)) ** 2).mean()
+            rel_loss = (((output[:, :-1] - y[:, :-1]) / (y[:, :-1] + 1e-8)) ** 2).mean()
+
+            entropy_loss = 0.0
+            if args.use_entropy:
+                entropy_pred = f.softplus(entropy_predictor(output[:, :-1]).reshape(-1, 1))
+                entropy_loss = (((entropy_pred - y[:, :-1]) / (y[:, :-1] + 1e-8)) ** 2).mean()
+
+            loss = rel_loss + entropy_loss * 1e-2
             loss.backward()
 
-            avg_loss += (loss - avg_loss) / (i + 1)
+            avg_loss += (rel_loss - avg_loss) / (i + 1)
 
             if i % train_params.logging_frequency == 0:
                 logger.info(f'Average Batch Loss ({i + 1}/{len(dataloader)}): {avg_loss}')
@@ -75,6 +93,7 @@ def train(args: argparse.Namespace):
                     logger.info(f'Saved best model with loss {best_loss} to {args.model_save_path}')
 
             optimizer.step()
+            scheduler.step()
 
         if avg_loss < best_loss:
             best_loss = avg_loss.item() # type: ignore
