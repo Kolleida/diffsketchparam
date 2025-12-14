@@ -1,12 +1,12 @@
-import os
 import polars as pl
-import polars_hash as plh
 import numpy as np
 
 
 class CountMinSketch:
-    # TODO: Maybe make this use lazy frames instead, so we can parallelize updates across files?
-
+    """
+    A standard CountMin Sketch implementation using polars for efficient processing of tabular data.
+    Accepts data in the form of polars DataFrames for insertion and querying, and returns results as numpy arrays.
+    """
     KEY_COL = "keys"
     VALUE_COL = "values"
 

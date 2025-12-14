@@ -4,11 +4,10 @@ import polars as pl
 import polars_hash as plh
 import numpy as np
 import scipy as sp
-from itertools import product
 from loguru import logger
 import math
 
-from sketch import CountMinSketch, CountSketch
+from sketch import CountMinSketch
 
 
 eps_int = (1e-5, 1e-2)
@@ -16,6 +15,11 @@ delta_int = (1e-3, 1e-2)
 
 
 class CaidaData(Dataset):
+    """
+    Randomly generates CountMin Sketches from CAIDA flow data files, and then creates training examples out of them.
+    Computes apprxoimate frequencies and differences from true frequencies for each flow in the data, and uses these as input features.
+    The ground truth targets are the sketch parameters (d, w) and entropy of the sketch table.
+    """
 
     KEY_COL = 'flow'
     VALUE_COL = 'packets'

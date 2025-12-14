@@ -1,8 +1,6 @@
 from sketch import CountMinSketch
-from model import *
+from model import FeedForwardPredictor
 from data import CaidaData
-from config import Config
-import polars as pl
 import torch
 import numpy as np
 from torch.utils.data import DataLoader

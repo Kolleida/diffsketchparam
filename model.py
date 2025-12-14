@@ -18,6 +18,18 @@ class FeedForwardPredictorParams:
 
 
 class FeedForwardPredictor(nn.Module):
+    """
+    Predicts CountMin Sketch parameters from input features using a feedforward neural network with hash embeddings.
+    Keys are embedded using hash embeddings and concatenated with input (nuermic) features before being passed through the network.
+    
+    Args:
+        config (FeedForwardPredictorParams): Configuration parameters for the model.
+    Inputs:
+        X (torch.Tensor): Input feature tensor of shape (batch_size, input_dim).
+        keys (torch.Tensor): Tensor of keys for hash embeddings of shape (batch_size, num_keys).
+    Outputs:
+        torch.Tensor: Predicted sketch parameters of shape (batch_size, output_dim).
+    """
 
     def __init__(
         self, 
