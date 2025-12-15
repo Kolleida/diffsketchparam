@@ -1,6 +1,13 @@
 # Learning Based Sketch Parameter Configuration
 
-This repository contains the code for running and experimenting with predicting the parameters for Count-Min sketch using a neural network. The hash embedding implementation used in this repo was taken from [Yann Dubois](https://github.com/YannDubs/Hash-Embeddings).
+This repository contains the code for running and experimenting with predicting the parameters for Count-Min sketch using a neural network. The hash embedding implementation used in this repo was taken from [Yann Dubois](https://github.com/YannDubs/Hash-Embeddings). 
+
+Install the required dependencies either with pip (`requirements.txt`) or conda (`environment.yml`). This implementation uses Python 3.11.
+
+```bash
+pip install -r requirements.txt
+conda env create -f environment.yml
+```
 
 ## Preparing the Data
 
