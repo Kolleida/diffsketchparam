@@ -2,10 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as f
 from torch.nn import Linear, ReLU, RMSNorm
-from hash_embeddings import HashEmbedding
+from .hash_embeddings import HashEmbedding
 from dataclasses import dataclass, field, asdict
-from collections import OrderedDict
-from hash_embeddings import HashEmbeddingParams
+from .hash_embeddings import HashEmbeddingParams
 
 
 @dataclass

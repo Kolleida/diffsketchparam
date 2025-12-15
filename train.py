@@ -6,14 +6,12 @@ import torch
 import torch.nn.functional as f
 from torch.utils.data import DataLoader
 from torch.optim import AdamW, SGD
-from tqdm import tqdm
 from loguru import logger
 
 
-from model import FeedForwardPredictor, FeedForwardPredictorParams
-from data import CaidaData
-from config import Config, TrainingParams, ModelConfig
-from sketch import CountMinSketch
+from diffsketch.model import FeedForwardPredictor
+from diffsketch.data import CaidaData
+from diffsketch.config import Config
 
 
 def parse_command_line_args():
@@ -84,7 +82,7 @@ def train(args: argparse.Namespace):
 
             entropy_loss = 0.0
             if args.use_entropy:
-                entropy_pred = f.softplus(entropy_predictor(output[:, :-1]).reshape(-1, 1))
+                entropy_pred = f.softplus(entropy_predictor(output[:, :-1]).reshape(-1, 1)) # type: ignore
                 entropy_loss = (((entropy_pred - y[:, :-1]) / (y[:, :-1] + 1e-8)) ** 2).mean()
 
             loss = rel_loss + entropy_loss * 1e-2

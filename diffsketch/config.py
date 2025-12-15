@@ -2,8 +2,8 @@ from dataclasses import dataclass, field
 from typing import Literal
 import yaml
 
-from hash_embeddings import HashEmbeddingParams
-from model import FeedForwardPredictorParams
+from .hash_embeddings import HashEmbeddingParams
+from .model import FeedForwardPredictorParams
 from cattrs import structure
 
 

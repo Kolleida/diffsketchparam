@@ -7,7 +7,7 @@ import scipy as sp
 from loguru import logger
 import math
 
-from sketch import CountMinSketch
+from .sketch import CountMinSketch
 
 
 eps_int = (1e-5, 1e-2)

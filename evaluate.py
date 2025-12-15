@@ -1,6 +1,6 @@
-from sketch import CountMinSketch
-from model import FeedForwardPredictor
-from data import CaidaData
+from diffsketch.sketch import CountMinSketch
+from diffsketch.model import FeedForwardPredictor
+from diffsketch.data import CaidaData
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
