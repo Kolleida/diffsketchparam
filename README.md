@@ -9,6 +9,24 @@ pip install -r requirements.txt
 conda env create -f environment.yml
 ```
 
+## Project Structure
+
+The code files for utilities live within the `diffsketch` folder, while `train.py` and `evaluate.py` are the main driver scripts. Other files are either miscellaneous files for fetching data, environment set up, etc.
+
+```text
+diffsketchparam/
+├── ...
+├── diffsketch/
+│   ├── model.py
+│   ├── config.py
+│   ├── data.py
+│   ├── sketch.py
+│   └── hash_embeddings.py
+├── train.py // Train model with this.
+├── evaluate.py // Test model by predicting sketch parameters.
+└── ...
+```
+
 ## Preparing the Data
 
 For our experiments, we use packet traces sourced from the **CAIDA Anonymized Internet Traces 2018 Dataset**, collected over the `equinix-nyc` monitor, but it is not important which portion of the dataset you choose to use. To donwload the pcap files, follow the instructions at the following link to create an account and request access: [CAIDA Passive Traces](https://www.caida.org/catalog/datasets/passive_dataset_download/). Once you have created a username and password, you can download the associated pcap files to your system using `wget` like so. Note that the entire dataset is very large (the 2018 dataset alone is nearly 1 TB), so it is recommended to either reserve space in a separate drive or only download select files.
