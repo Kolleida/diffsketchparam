@@ -1,11 +1,25 @@
 # Learning Based Sketch Parameter Configuration
 
-This repository contains the code for running and experimenting with predicting the parameters for Count-Min sketch using a neural network. The hash embedding implementation used in this repo was taken from [Yann Dubois](https://github.com/YannDubs/Hash-Embeddings). 
+This repository contains the code for running and experimenting with predicting the parameters for Count-Min sketch using a neural network. For the hash embedding used in this repo, we use the [optimized implementation](https://github.com/YannDubs/Hash-Embeddings) from Yann Dubois.
 
-Install the required dependencies either with pip (`requirements.txt`) or conda (`environment.yml`). This implementation uses Python 3.11.
+## Overview
 
+A Count Min sketch is an approximate data structure that lets us track and estimate the frequency of unique keys. In a sense, it is a more memory efficient version of a hash table used for the same purpose (think `Counter` from the Python `collections` library). At a high level, it works by hashing a key with several hash functions and increments multiple separate counters. The minimum value of these counters in expectation can approximate the frequency of the key with bounded error while using sublinear space.
+
+More formally, let $d, w \in \mathbb{N}$, and let $x \in X$ be a key. To increment the count of $x$, we apply several hash functions $h_i: X \rightarrow [w]$, where  $1 \leq i \leq d$, to get the indices in an array of counters $M_i$ (each array is size $w$). We then increment $M_i[h_i(x)]$ by however much $x$ increased. Taking $$query(x) = min_i(M_i[h_i(x)]), \quad 1 \leq i \leq d$$ gives us our frequency estimate. In practice these arrays of counters are represented as a $d \times w$ matrix. While there are good theoretical analyses for choosing $d$ and $w$ to achieve a certain approximation error, these are often too pessimistic for real world data, leading to overly large values of $d, w$. Thus, we investigate whether we can leverage machine learning to find empirical parameters that will minimize space used while still achieving the desired approximation error.
+
+More specifically, we train a neural network to predict the optimal $d, w$  given a key, its approximate frequency information, and a target error rate $\epsilon$. Averaging predictions over multiple keys will let us estimate an optimal $d, w$ for the entire data stream. We find that our predicted parameters can achieve between 58.26-69.70% size reduction while having minimal impact on approximation accuracy. More details on the results can be found in this [slide deck](https://docs.google.com/presentation/d/1w3fIoRlOjpfgxUjItYQohgppemqLPbYHeIJGPBimPkg/edit?usp=sharing). 
+
+## Environment Setup
+
+Make sure that you have a working Python installation (recommended to be at least Python 3.11 for consistent replicability). Install the required dependencies either with pip (`requirements.txt`) or conda (`environment.yml`) like so.
 ```bash
+cd diffsketchparam
+
+# Virtual env/pip installation.
 pip install -r requirements.txt
+
+# Conda installation.
 conda env create -f environment.yml
 ```
 
@@ -103,7 +117,7 @@ Explanation of some of the command line args.
 - `--input-path`: Specify one or more paths to the input files. Can also specify glob strings, in which case the final training data used will be the combination of all the paths found. Note that this means that if two globs overlap, the overlapping file paths will be repeated.
 - `--num-sketches`: The number of sketches to use for training.
 - `--key-column`: The column of the CSV that corresponds to the keys we want to insert into the sketch. In the above example, we are counting the frequency of different flow keys (5-tuple of source IP, destination IP, source port, and protocol).
-- `--value-column`: The column of the CSV that corresponds to how much we update the count when inserting. In the above example, everytime we encounter a flow key, we update the count by the number of packets.
+- `--value-column`: The column of the CSV that corresponds to how much we update the count when inserting. In the above example, everytime we encounter a flow key, we update the count by the number of packets encountered at that timestep.
 - `--model-save-path`: Where to save the weights of the trained model. As training occurs, saves the best weights (determined by lowest average loss) and the final weights at the end of training (suffixed with `_final`).
 - `--config-file`: Path to YAML config that contains model config (e.g. hidden dimension size, number of layers, optimizer, etc). 
 - `--use-entropy`: Add this flag to train the entropy version. The model tries to predict the entropy of the sketch using the predicted parameters to encourage smaller sketches.
@@ -173,7 +187,7 @@ Explanation of some of the command line args.
 - `--num-sketches-dataset`: The number of sketches to use for getting initial (approximate) frequency estimates.
 - `--num-sketches-test`: The number of sketches to create when testing the model's predicted parameters. Change this to increase number of evaluation targets.
 - `--key-column`: The column of the CSV that corresponds to the keys we want to insert into the sketch. In the above example, we are counting the frequency of different flow keys (5-tuple of source IP, destination IP, source port, and protocol).
-- `--value-column`: The column of the CSV that corresponds to how much we update the count when inserting. In the above example, everytime we encounter a flow key, we update the count by the number of packets.
+- `--value-column`: The column of the CSV that corresponds to how much we update the count when inserting. In the above example, everytime we encounter a flow key, we update the count by the number of packets at that timestep.
 - `--model-save-path`: The model weights to use for evaluation.
 - `--eval-type`: Either `"test_sketches"` or `"dataset"` (default is `"test_sketches"`). Whether to evaluate against newly computed sketches or to evaluate on a dataset similar to one from the training (usually best to just ignore this flag).
 - `--use-entropy`: Add this flag to train the entropy version. The model tries to predict the entropy of the sketch using the predicted parameters to encourage smaller sketches.
